@@ -374,8 +374,7 @@ class Game(object):
             if self.duration % 7 == 0 and len(self.bubbles) < 8:
                 #self.bubbles.append(self.make_bubble())
                 i = (self.duration//7) % len(self.backgrounds)
-                img = self.load_background(self.backgrounds[i])
-                self.bg_img = self.fit_image(img, self.width, self.height)
+                self.bg_img = self.load_background(self.backgrounds[i])
             self.target = random.randrange(len(self.bubbles))
             self.state = Game.BRAVO_STATE
             if android:
