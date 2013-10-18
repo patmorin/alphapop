@@ -2,6 +2,10 @@
 
 A kid's game to help kids learn to recognize letters in different cases
 and fonts.
+
+A bunch of bubbles with letters inside them float around the screen and
+the player is asked to pop the bubble containing a specific letter. The 
+number of bubbles on screen increases as time goes on.
 """
 from __future__ import division
 
@@ -33,9 +37,11 @@ def distance(a, b):
     """Return the distance between two points a and b"""
     return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
 
+
 def sub(a, b):
     """Return the vector difference between a and b"""
     return [a[i] - b[i] for i in range(2)]
+
 
 def add(a, b):
     """Return the vector difference between a and b"""
@@ -66,6 +72,7 @@ def norm(a):
     """Return the norm of the point/vector a"""
     return distance((0, 0), a)
 
+
 def blit_centered(surface1, surface2):
     """Blit surface2, centered, onto surface1"""
     rect = surface2.get_rect()
@@ -73,39 +80,39 @@ def blit_centered(surface1, surface2):
                      (surface1.get_height()-rect.height)//2)
     surface1.blit(surface2, rect)
 
+
 class Bubble(object):
-    """Bubbles are the main on-screen objects in this game"""
+    """Bubbles are the main on-screen objects in this game
+
+    When a Bubble is created, it generates an image (with transparency)
+    of itself and keeps track of the current position of the top-left
+    corner of this image as well as its current direction of travel
+    """
     image = pygame.image.load(os.path.join('images', 'bubble-large.png'))
     rectangle = image.get_rect()
-    font = pygame.font.SysFont(None, 40)
 
-
-    def __init__(self, letter, radius, position, direction):
+    def __init__(self, letter, font, radius, position, direction):
         self.letter = letter
         self.radius = radius
         self.position = position
         self.direction = direction
         diam = 2*radius
-        # setup an image of this bubble
+        # setup the image of this bubble
         self.image = pygame.Surface((diam, diam), pygame.SRCALPHA)
-        if random.randrange(2):
-            c = letter.upper()
-        else:
-            c = letter.lower()
-        text = Bubble.font.render(c, True, Game.WHITE)
+        c = random.choice([letter.upper(), letter.lower()])
+        text = font.render(c, True, Game.WHITE)
         blit_centered(self.image, text)
         bubble = pygame.transform.smoothscale(Bubble.image, (diam, diam))
         self.image.blit(bubble, self.image.get_rect())
-
 
     def diameter(self):
         """Return the diameter of this bubble"""
         return 2 * self.radius
 
-
     def center(self):
         """Return the center of this bubble"""
         return [self.position[i]+self.radius for i in range(2)]
+
         
 class Game(object):
     """Encapsulates our newly-created game"""
@@ -122,22 +129,21 @@ class Game(object):
     ANNOUNCE_STATE = 2
     BRAVO_STATE = 3
 
-
     def __init__(self):
         """Initialize this game"""
 
         info = pygame.display.Info()        
 
-        # Set the screen size.
+        # Set the screen size---fullscreen on android
         if android:
-            size = (info.current_w, info.current_h)
+            self.size = (info.current_w, info.current_h)
         else:
-            size = (800, 480)
+            self.size = (800, 480)
+        self.width, self.height = self.size
+        self.screen = pygame.display.set_mode(self.size)
 
-	size = (1920, 1080)
-        self.size = size
-        self.width, self.height = size[0], size[1]
-        self.screen = pygame.display.set_mode(size, pygame.DOUBLEBUF|pygame.FULLSCREEN|pygame.HWSURFACE)
+        # We develop and test at 800x480, so scale things if needed
+        scale = max(self.width, self.height)/800
 
         # Map the back button to the escape key.
         if android:
@@ -145,37 +151,42 @@ class Game(object):
             android.map_key(android.KEYCODE_BACK, pygame.K_ESCAPE)
 
         # Load resources
-        self.announce_font = pygame.font.SysFont(None, 200)
+        self.announce_font = pygame.font.SysFont(None, int(200*scale))
+        self.reminder_font = pygame.font.SysFont(None, int(40*scale))
+        self.bubble_font = pygame.font.SysFont(None, int(60*scale))
 
-        img = self.load_image('background.jpg')
+        self.backgrounds = ['background%d.jpg' % i for i in range(10)]
+        random.shuffle(self.backgrounds)
+        img = self.load_image(self.backgrounds[0])
         self.bg_img = self.fit_image(img, self.width, self.height)
+        self.background = 1
 
         self.pop_sound = self.load_sound('pop.wav')
         self.wrong_sound = self.load_sound('wrong.wav')
         self.soundtrack = self.load_sound('soundtrack.wav')
         
-        self.bubble_radius = min(self.width, self.height)//8
-
+        # Set up internal state
+        self.pad = int(scale*10)
+        self.bubble_radius = int(min(self.width, self.height)/8)
         self.duration = 0
         self.alphabet = [c for c in "abcdefghijklmnopqrstuvwxyz"]
         random.shuffle(self.alphabet)
         self.next = 0
         self.bubbles = []
-        for i in range(3):
+        for i in range(4):
             self.bubbles.append(self.make_bubble())
         self.target = random.randrange(len(self.bubbles))
         self.announce_target()
 
-
     def load_image(self, filename):
         """Load an image file to get a pygame.Surface object"""
         return pygame.image.load(os.path.join('images', filename))
-
+        #return pygame.image.load(filename)
 
     def load_sound(self, filename):
         """Load a sound file to get a pygame.mixer.Sound object"""
-        return pygame.mixer.Sound(os.path.join("sounds", filename))
-
+        return mixer.Sound(os.path.join("sounds", filename))
+        #return mixer.Sound(filename)
 
     def announce_target(self):
         """Announce a new target letter"""
@@ -184,10 +195,12 @@ class Game(object):
         self.soundtrack.set_volume(0.1)
         question.set_volume(1)
         question.play()
-        ms = int(question.get_length()*1000)
+        if android: # get_length() not supported by android.mixer
+            ms = 2000  
+        else:
+            ms = int(question.get_length()*1000)
         pygame.time.set_timer(Game.ANNOUNCE_EVENT, ms)
         self.state = Game.ANNOUNCE_STATE
-
 
     def make_bubble(self):
         """Generate a new bubble"""
@@ -209,8 +222,8 @@ class Game(object):
         direction = [ math.cos(theta), math.sin(theta) ]
         letter = self.alphabet[self.next]
         self.next = (self.next + 1) % len(self.alphabet)
-        return Bubble(letter, self.bubble_radius, position, direction)
-
+        return Bubble(letter, self.bubble_font, self.bubble_radius,
+                      position, direction)
 
     def run(self):
         """The game's main loop"""
@@ -228,6 +241,10 @@ class Game(object):
 
             # Refresh display
             if event.type == Game.REFRESH_EVENT:
+                # keep the music playing
+                if android:
+                    android.mixer.periodic()
+
                 self.draw()
                 self.physics()
                 pygame.display.flip()
@@ -252,7 +269,6 @@ class Game(object):
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 break
 
-
     def draw(self):
         """Draw this game's display"""
         
@@ -267,7 +283,7 @@ class Game(object):
             self.screen.blit(b.image, rect)
             c = [int(x) for x in b.center()]
         
-        # the announcement, if appropriate
+        # finally, the announcement
         if self.state == Game.ANNOUNCE_STATE:
             letter = self.bubbles[self.target].letter.upper()
             text = self.announce_font.render(letter, True, Game.WHITE)
@@ -275,7 +291,13 @@ class Game(object):
             rect = rect.move((self.width-rect.width)//2,
                              (self.height-rect.height)//2)
             self.screen.blit(text, rect)
-
+        elif self.state == Game.PLAY_STATE:
+            letter = self.bubbles[self.target].letter.upper()
+            text = self.reminder_font.render(letter, True, Game.WHITE)
+            rect = text.get_rect()
+            rect = rect.move(self.pad, self.height - rect.height - self.pad)
+            self.screen.blit(text, rect)
+            
 
     def fit_image(self, img, width, height):
         """Return an image that is scaled and cropped to the given size"""
@@ -293,7 +315,6 @@ class Game(object):
         img2 = pygame.Surface((width, height))
         img2.blit(img, rect)
         return img2
-
 
     def physics(self):
         """Do the in-game physics"""
@@ -325,11 +346,12 @@ class Game(object):
                     bi.direction = add(bi.direction, tji)
                     bj.direction = sub(bj.direction, tji)
 
-
     def clicked(self, pos):
-        """The user clicked at location pos"""
+        """The user clicked at location pos, see if they hit the target"""
+
         b = self.bubbles[self.target]
         if distance(pos, b.center()) < b.radius:
+
             # user clicked the target bubble
             self.pop_sound.play()
             letter = b.letter
@@ -339,14 +361,29 @@ class Game(object):
             bravo.play()
             self.bubbles[self.target] = self.make_bubble()
             self.duration += 1
+
+            # 7 correct answers---add another bubble and change the background
             if self.duration % 7 == 0 and len(self.bubbles) < 8:
-                self.bubbles.append(self.make_bubble())
+                #self.bubbles.append(self.make_bubble())
+                img = self.load_image(self.backgrounds[self.background])
+                self.background = (self.background + 1) % len(self.backgrounds)
+                self.bg_img = self.fit_image(img, self.width, self.height)
             self.target = random.randrange(len(self.bubbles))
             self.state = Game.BRAVO_STATE
-            ms = int(bravo.get_length()*1000)
+            if android:
+                ms = 2000  # get_length() not supported by android.mixer
+            else:
+                ms = int(bravo.get_length()*1000)
             pygame.time.set_timer(Game.BRAVO_EVENT, ms)
         else:
-            self.wrong_sound.play()            
+            self.wrong_sound.play()
+            for i in range(len(self.bubbles)):
+                b = self.bubbles[i]
+                if distance(pos, b.center()) < b.radius:
+                    # user clicked wrong bubble, pop it anyway
+                    self.pop_sound.play()
+                    self.bubbles[i] = self.make_bubble()
+
 
 def main():
     Game().run()

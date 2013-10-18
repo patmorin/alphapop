@@ -1,0 +1,1 @@
+{"layout": "internal", "orientation": "landscape", "package": "ca.cglab.morin.alphapop", "include_pil": false, "expansion": false, "name": "Alpha Pop", "source": true, "icon_name": "Alpha Pop", "version": "0", "permissions": ["VIBRATE"], "include_sqlite": false, "numeric_version": "0"}
