@@ -92,15 +92,16 @@ class Bubble(object):
     rectangle = image.get_rect()
 
     def __init__(self, letter, font, radius, position, direction):
-        self.letter = letter
+        """Initialize instance variables and create an image"""
+        self.letter = letter.lower()
         self.radius = radius
         self.position = position
         self.direction = direction
-        diam = 2*radius
+
         # setup the image of this bubble
+        diam = 2*radius
         self.image = pygame.Surface((diam, diam), pygame.SRCALPHA)
-        c = random.choice([letter.upper(), letter.lower()])
-        text = font.render(c, True, Game.WHITE)
+        text = font.render(letter, True, Game.WHITE)
         blit_centered(self.image, text)
         bubble = pygame.transform.smoothscale(Bubble.image, (diam, diam))
         self.image.blit(bubble, self.image.get_rect())
@@ -154,6 +155,13 @@ class Game(object):
         self.announce_font = pygame.font.SysFont(None, int(200*scale))
         self.reminder_font = pygame.font.SysFont(None, int(40*scale))
         self.bubble_font = pygame.font.SysFont(None, int(60*scale))
+        self.fonts = [self.bubble_font]
+        self.fonts.append(pygame.font.Font(pygame.font.match_font('serif'),
+                          int(60*scale)))
+        self.fonts.append(pygame.font.Font(pygame.font.match_font('sans-serif'),
+                          int(60*scale)))
+        self.fonts.append(pygame.font.Font(pygame.font.match_font('monospace'),
+                          int(60*scale)))
 
         self.backgrounds = ['background%d.jpg' % i for i in range(10)]
         random.shuffle(self.backgrounds)
@@ -192,8 +200,6 @@ class Game(object):
         """Announce a new target letter"""
         letter = self.bubbles[self.target].letter
         question = self.load_sound("question-" + letter + ".wav")
-        self.soundtrack.set_volume(0.1)
-        question.set_volume(1)
         question.play()
         if android: # get_length() not supported by android.mixer
             ms = 2000  
@@ -212,22 +218,23 @@ class Game(object):
         retry = True
         while retry:
             retry = False
-            position = [ random.randrange(rangex), random.randrange(rangey) ]
+            position = [random.randrange(rangex), random.randrange(rangey)]
             center = [position[i]+self.bubble_radius for i in range(2)]
             for b in self.bubbles:
                 if distance(b.center(), center) < b.radius + radius:
                     retry = True
                     break
         theta = random.random()*2*math.pi
-        direction = [ math.cos(theta), math.sin(theta) ]
-        letter = self.alphabet[self.next]
+        direction = [math.cos(theta), math.sin(theta)]
+        letter = self.alphabet[self.next].upper()
+        if self.duration > 26:
+            letter = random.choice([letter.upper(), letter.lower()])
         self.next = (self.next + 1) % len(self.alphabet)
-        return Bubble(letter, self.bubble_font, self.bubble_radius,
+        return Bubble(letter, random.choice(self.fonts), self.bubble_radius,
                       position, direction)
 
     def run(self):
         """The game's main loop"""
-        self.soundtrack.set_volume(0.3)
         self.soundtrack.play(-1, 0, 2000)
         pygame.time.set_timer(Game.REFRESH_EVENT, 1000 // Game.FPS)
 
@@ -252,7 +259,6 @@ class Game(object):
             # announcement is over---start playing and turn up the volume
             elif event.type == Game.ANNOUNCE_EVENT:
                 pygame.time.set_timer(Game.ANNOUNCE_EVENT, 0)
-                self.soundtrack.set_volume(.3)
                 self.state = Game.PLAY_STATE
 
             # congratulations is over---announce new target
@@ -321,7 +327,8 @@ class Game(object):
         # bubbles moves
         for b in self.bubbles:
             speed = self.height/(5*Game.FPS)
-            b.position = [b.position[i] + b.direction[i]*speed for i in range(2)]
+            b.position = [b.position[i] + b.direction[i]*speed
+                            for i in range(2)]
         # bubbles bounce off walls
             for i in range(2):
                 if b.position[i] < 0 and b.direction[i] < 0: 
@@ -346,6 +353,7 @@ class Game(object):
                     bi.direction = add(bi.direction, tji)
                     bj.direction = sub(bj.direction, tji)
 
+
     def clicked(self, pos):
         """The user clicked at location pos, see if they hit the target"""
 
@@ -356,8 +364,6 @@ class Game(object):
             self.pop_sound.play()
             letter = b.letter
             bravo = self.load_sound("bravo-" + letter + ".wav")
-            self.soundtrack.set_volume(0.1)
-            bravo.set_volume(1)
             bravo.play()
             self.bubbles[self.target] = self.make_bubble()
             self.duration += 1
