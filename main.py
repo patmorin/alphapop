@@ -133,9 +133,8 @@ class Game(object):
     def __init__(self):
         """Initialize this game"""
 
+        # Set the screen size---fullscreen on android.
         info = pygame.display.Info()        
-
-        # Set the screen size---fullscreen on android
         if android:
             self.size = (info.current_w, info.current_h)
         else:
@@ -143,7 +142,7 @@ class Game(object):
         self.width, self.height = self.size
         self.screen = pygame.display.set_mode(self.size)
 
-        # We develop and test at 800x480, so scale things if needed
+        # We develop and test at 800x480, so scale things if needed.
         scale = max(self.width, self.height)/800
 
         # Map the back button to the escape key.
@@ -151,50 +150,54 @@ class Game(object):
             android.init()
             android.map_key(android.KEYCODE_BACK, pygame.K_ESCAPE)
 
-        # Load resources
+        # Load fonts.
         self.announce_font = pygame.font.SysFont(None, int(200*scale))
         self.reminder_font = pygame.font.SysFont(None, int(40*scale))
-        self.bubble_font = pygame.font.SysFont(None, int(60*scale))
-        self.fonts = [self.bubble_font]
-        self.fonts.append(pygame.font.Font(pygame.font.match_font('serif'),
-                          int(60*scale)))
-        self.fonts.append(pygame.font.Font(pygame.font.match_font('sans-serif'),
-                          int(60*scale)))
-        self.fonts.append(pygame.font.Font(pygame.font.match_font('monospace'),
-                          int(60*scale)))
+        for root, dirs, files in os.walk('fonts'):
+            fontfiles = [os.path.join(root, filename) for filename in files
+                            if filename.lower().endswith("ttf")]
+            self.fonts = [pygame.font.Font(f, int(60*scale)) for f in fontfiles]
+        self.fonts.append(pygame.font.SysFont(None, int(60*scale)))
 
-        self.backgrounds = ['background%d.jpg' % i for i in range(10)]
+        # Load backgrounds.        
+        for root, dirs, files in os.walk('backgrounds'):
+            self.backgrounds = \
+                [os.path.join(root, filename) for filename in files
+                 if filename.lower().endswith("jpg")]
         random.shuffle(self.backgrounds)
-        img = self.load_image(self.backgrounds[0])
-        self.bg_img = self.fit_image(img, self.width, self.height)
-        self.background = 1
+        self.bg_img = self.load_background(self.backgrounds[0])
 
+        # Load common sounds.
         self.pop_sound = self.load_sound('pop.wav')
         self.wrong_sound = self.load_sound('wrong.wav')
         self.soundtrack = self.load_sound('soundtrack.wav')
         
-        # Set up internal state
+        # Set up internal variables.
         self.pad = int(scale*10)
         self.bubble_radius = int(min(self.width, self.height)/8)
         self.duration = 0
         self.alphabet = [c for c in "abcdefghijklmnopqrstuvwxyz"]
         random.shuffle(self.alphabet)
-        self.next = 0
         self.bubbles = []
         for i in range(4):
             self.bubbles.append(self.make_bubble())
+            
+        # Pick the first target and announce it.
         self.target = random.randrange(len(self.bubbles))
         self.announce_target()
 
     def load_image(self, filename):
         """Load an image file to get a pygame.Surface object"""
         return pygame.image.load(os.path.join('images', filename))
-        #return pygame.image.load(filename)
+
+    def load_background(self, filename):
+        """Load a background image to get a pygame.Surface object"""
+        img = pygame.image.load(filename)
+        return self.fit_image(img, self.width, self.height)
 
     def load_sound(self, filename):
         """Load a sound file to get a pygame.mixer.Sound object"""
         return mixer.Sound(os.path.join("sounds", filename))
-        #return mixer.Sound(filename)
 
     def announce_target(self):
         """Announce a new target letter"""
@@ -226,12 +229,12 @@ class Game(object):
                     break
         theta = random.random()*2*math.pi
         direction = [math.cos(theta), math.sin(theta)]
-        letter = self.alphabet[self.next].upper()
+        self.duration += 1
+        letter = self.alphabet[self.duration%len(self.alphabet)].upper()
         if self.duration > 26:
             letter = random.choice([letter.upper(), letter.lower()])
-        self.next = (self.next + 1) % len(self.alphabet)
-        return Bubble(letter, random.choice(self.fonts), self.bubble_radius,
-                      position, direction)
+        font = random.choice(self.fonts)
+        return Bubble(letter, font, self.bubble_radius, position, direction)
 
     def run(self):
         """The game's main loop"""
@@ -366,13 +369,12 @@ class Game(object):
             bravo = self.load_sound("bravo-" + letter + ".wav")
             bravo.play()
             self.bubbles[self.target] = self.make_bubble()
-            self.duration += 1
 
             # 7 correct answers---add another bubble and change the background
             if self.duration % 7 == 0 and len(self.bubbles) < 8:
                 #self.bubbles.append(self.make_bubble())
-                img = self.load_image(self.backgrounds[self.background])
-                self.background = (self.background + 1) % len(self.backgrounds)
+                i = (self.duration//7) % len(self.backgrounds)
+                img = self.load_background(self.backgrounds[i])
                 self.bg_img = self.fit_image(img, self.width, self.height)
             self.target = random.randrange(len(self.bubbles))
             self.state = Game.BRAVO_STATE
