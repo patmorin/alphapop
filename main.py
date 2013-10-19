@@ -182,13 +182,38 @@ class Game(object):
 
         # Initialize mode---uppercase, mixed-case or lowercase
         self.mode = Game.UPPERCASE_MODE
-        modefont = pygame.font.SysFont(None, int(30*scale)) 
-        self.mode_imgs = [modefont.render('A', True, Game.WHITE),
-                          modefont.render('Aa', True, Game.WHITE),
-                          modefont.render('a', True, Game.WHITE)]
+        modefont = pygame.font.SysFont(None, int(20*scale)) 
+        text = modefont.render('A', True, Game.WHITE)
+        diam = int(text.get_height()*1.44)
+        bubble = pygame.transform.smoothscale(Bubble.image, (diam, diam))
+        self.mode_imgs = []
+        for txt in ['A', 'Aa', 'a']:
+            textcase = modefont.render(txt, True, Game.WHITE)
+            img = pygame.Surface((diam, diam), pygame.SRCALPHA)
+            blit_centered(img, textcase)
+            img.blit(bubble, bubble.get_rect())
+            self.mode_imgs.append(img)
+
+        # Make a bunch of bubble images.
+        img = pygame.Surface((diam, diam), pygame.SRCALPHA)
+        blit_centered(img, text)
+
+        img.blit(bubble, img.get_rect())
+        self.bubble_imgs = []
+        for i in range(1, 9):
+            img2 = pygame.Surface((diam*8, diam), pygame.SRCALPHA)
+            rect = img.get_rect();
+            for j in range(8):
+                img2.blit([bubble, img][j < i], rect)
+                rect = rect.move(diam, 0)
+            self.bubble_imgs.append(img2)
 
 
-        self.duration = 0
+        # Use this to keep track of the next letter
+        self.next_letter = 0
+
+        # Use this to keep track of the number of correct answers
+        self.correct = 0
 
         # Permute the alphabet and make the first few bubbles
         self.alphabet = [c for c in "abcdefghijklmnopqrstuvwxyz"]
@@ -197,21 +222,6 @@ class Game(object):
         for i in range(4):
             self.bubbles.append(self.make_bubble())
 
-        # Make a bunch of bubble images.
-        diam = int(self.mode_imgs[0].get_height()*1.2)
-        img = pygame.Surface((diam, diam), pygame.SRCALPHA)
-        text = modefont.render('A', True, Game.WHITE)
-        blit_centered(img, text)
-        bubble = pygame.transform.smoothscale(Bubble.image, (diam, diam))
-        img.blit(bubble, img.get_rect())
-        self.bubble_imgs = []
-        for i in range(1, 8):
-            img2 = pygame.Surface((diam*8, diam), pygame.SRCALPHA)
-            rect = img.get_rect();
-            for j in range(8):
-                img2.blit([bubble, img][j < i], rect)
-                rect = rect.move(diam, 0)
-            self.bubble_imgs.append(img2)
             
         # Pick the first target and announce it.
         self.target = random.randrange(len(self.bubbles))
@@ -264,8 +274,8 @@ class Game(object):
         direction = [math.cos(theta), math.sin(theta)]
 
         # Choose the letter and case
-        self.duration += 1
-        letter = self.alphabet[self.duration%len(self.alphabet)]
+        letter = self.alphabet[self.next_letter%len(self.alphabet)]
+        self.next_letter += 1
         if self.mode == Game.UPPERCASE_MODE:
             letter = letter.upper()
         elif self.mode == Game.MIXEDCASE_MODE:
@@ -323,19 +333,26 @@ class Game(object):
     def get_mode_rect(self):
         """Get the rectangle that contains this game's mode indicator"""
         rect = self.mode_imgs[self.mode].get_rect()
-        return rect.move (self.width-rect.width-self.pad, self.pad)
+        return rect.move (self.width-rect.width-self.pad, 
+                          self.height-rect.height-self.pad)
 
     def get_bubbles_rect(self):
         """Get the rectangle that contains the bubble count indicator"""
         rect = self.bubble_imgs[len(self.bubbles)-1].get_rect()
-        return rect.move(self.pad, self.pad)
+        return rect.move(self.pad, self.height-rect.height-self.pad)
 
     def draw(self):
         """Draw this game's display"""
         
         # First the background image
         self.screen.blit(self.bg_img, self.bg_img.get_rect())
-    
+
+        """rect = pygame.Rect(0, 0, self.width, 
+                        2*self.pad+self.mode_imgs[0].get_height())
+        surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (75, 75, 75, 75), rect)
+        self.screen.blit(surf, surf.get_rect())"""
+
         # Then all the bubbles
         for b in self.bubbles:
             # draw this bubble
@@ -363,7 +380,7 @@ class Game(object):
             letter = self.bubbles[self.target].letter.upper()
             text = self.reminder_font.render(letter, True, Game.WHITE)
             rect = text.get_rect()
-            rect = rect.move(self.pad, self.height - rect.height - self.pad)
+            rect = rect.move(self.pad, self.pad)
             self.screen.blit(text, rect)
             
 
@@ -421,7 +438,7 @@ class Game(object):
 
         b = self.bubbles[self.target]
 
-        # user clicked the target bubble
+        # The user clicked the target bubble
         if distance(pos, b.center()) < b.radius:
 
             self.pop_sound.play()
@@ -430,10 +447,10 @@ class Game(object):
             bravo.play()
             self.bubbles[self.target] = self.make_bubble()
 
-            # 7 correct answers---add another bubble and change the background
-            if self.duration % 7 == 0 and len(self.bubbles) < 8:
-                #self.bubbles.append(self.make_bubble())
-                i = (self.duration//7) % len(self.backgrounds)
+            # After every 7 correct answers we change the background
+            self.correct += 1
+            if self.correct % 7 == 0:
+                i = (self.correct//7) % len(self.backgrounds)
                 self.bg_img = self.load_background(self.backgrounds[i])
             self.target = random.randrange(len(self.bubbles))
             self.state = Game.BRAVO_STATE
@@ -443,24 +460,28 @@ class Game(object):
                 ms = int(bravo.get_length()*1000)
             pygame.time.set_timer(Game.BRAVO_EVENT, ms)
 
-        # User clicked the mode indicator
+        # User clicked the mode indicator---adjust the font choice
         elif self.get_mode_rect().collidepoint(pos):
             self.mode = (self.mode + 1) % len(self.mode_imgs)
 
-        # User clicked the bubble count indicator
+        # User clicked the bubble count indicator---adjust the number of bubbles
         elif self.get_bubbles_rect().collidepoint(pos):
             rect = self.get_bubbles_rect()
-            n = 1+int(((pos[0] - rect.left)/rect.width)*8)
-            n = min(n, 8)
+            maxn = len(self.bubble_imgs)
+            n = 1+ int( ((pos[0] - rect.left)/rect.width) * maxn)
+            n = int(max(1, min(n, maxn)))
             n = max(n, 1)
-            print n
+            n = int(n)
+            self.bubbles[self.target], self.bubbles[0] \
+                    = self.bubbles[0], self.bubbles[self.target]
+            self.target = 0
             while len(self.bubbles) < n:
                 self.bubbles.append(self.make_bubble())
             while len(self.bubbles) > n:
-                b2 = random.choice(self.bubbles)
-                if b2 != b:
-                    self.bubbles.remove(b2)
-                    self.target = self.bubbles.index(b)
+                i = random.randrange(1, len(self.bubbles))
+                self.bubbles[i], self.bubbles[len(self.bubbles)-1] \
+                    = self.bubbles[len(self.bubbles)-1], self.bubbles[i]
+                del self.bubbles[len(self.bubbles)-1]
             
         # User clicked somewhere else
         else: 
