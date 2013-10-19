@@ -1,11 +1,10 @@
 """Alpha Pop---an alphabet learning game
 
-A kid's game to help kids learn to recognize letters in different cases
-and fonts.
+Alphapop is a kid's game to help kids learn to recognize letters in 
+different cases and fonts.
 
 A bunch of bubbles with letters inside them float around the screen and
-the player is asked to pop the bubble containing a specific letter. The 
-number of bubbles on screen increases as time goes on.
+the player is asked to pop the bubble containing a specific letter.
 """
 from __future__ import division
 
@@ -118,22 +117,27 @@ class Bubble(object):
 class Game(object):
     """Encapsulates our newly-created game"""
 
-    # global constants
+    # Refresh rate
     FPS = 30
+
+    # User-defined event types
     REFRESH_EVENT = pygame.USEREVENT
     ANNOUNCE_EVENT = pygame.USEREVENT+1
     BRAVO_EVENT = pygame.USEREVENT+2
-    BLACK = (0, 0, 0, 255)
-    RED = (255, 0, 0, 255)
+
+    # Colours
     WHITE = (255, 255, 255, 255)
-    PLAY_STATE = 1
-    ANNOUNCE_STATE = 2
-    BRAVO_STATE = 3
+
+    # UI states
+    PLAY_STATE, ANNOUNCE_STATE, BRAVO_STATE = 1, 2, 3
+
+    # Play modes
+    UPPERCASE_MODE, MIXEDCASE_MODE, LOWERCASE_MODE = 0, 1, 2
 
     def __init__(self):
         """Initialize this game"""
 
-        # Set the screen size---fullscreen on android.
+        # Set the screen size---go fullscreen on android.
         info = pygame.display.Info()        
         if android:
             self.size = (info.current_w, info.current_h)
@@ -172,15 +176,42 @@ class Game(object):
         self.wrong_sound = self.load_sound('wrong.wav')
         self.soundtrack = self.load_sound('soundtrack.wav')
         
-        # Set up internal variables.
+        # Set up UI variables.
         self.pad = int(scale*10)
         self.bubble_radius = int(min(self.width, self.height)/8)
+
+        # Initialize mode---uppercase, mixed-case or lowercase
+        self.mode = Game.UPPERCASE_MODE
+        modefont = pygame.font.SysFont(None, int(30*scale)) 
+        self.mode_imgs = [modefont.render('A', True, Game.WHITE),
+                          modefont.render('Aa', True, Game.WHITE),
+                          modefont.render('a', True, Game.WHITE)]
+
+
         self.duration = 0
+
+        # Permute the alphabet and make the first few bubbles
         self.alphabet = [c for c in "abcdefghijklmnopqrstuvwxyz"]
         random.shuffle(self.alphabet)
         self.bubbles = []
         for i in range(4):
             self.bubbles.append(self.make_bubble())
+
+        # Make a bunch of bubble images.
+        diam = int(self.mode_imgs[0].get_height()*1.2)
+        img = pygame.Surface((diam, diam), pygame.SRCALPHA)
+        text = modefont.render('A', True, Game.WHITE)
+        blit_centered(img, text)
+        bubble = pygame.transform.smoothscale(Bubble.image, (diam, diam))
+        img.blit(bubble, img.get_rect())
+        self.bubble_imgs = []
+        for i in range(1, 8):
+            img2 = pygame.Surface((diam*8, diam), pygame.SRCALPHA)
+            rect = img.get_rect();
+            for j in range(8):
+                img2.blit([bubble, img][j < i], rect)
+                rect = rect.move(diam, 0)
+            self.bubble_imgs.append(img2)
             
         # Pick the first target and announce it.
         self.target = random.randrange(len(self.bubbles))
@@ -214,26 +245,37 @@ class Game(object):
     def make_bubble(self):
         """Generate a new bubble"""
         radius = self.bubble_radius
-        diam = 2*radius
-        rangex = self.width - diam
-        rangey = self.height - diam
-        position = []
+
+        # Appear somewhere that doesn't interfere with any existing bubble
+        rangex = self.width - 2*radius
+        rangey = self.height - 2*radius
         retry = True
         while retry:
             retry = False
             position = [random.randrange(rangex), random.randrange(rangey)]
-            center = [position[i]+self.bubble_radius for i in range(2)]
+            center = [position[i]+radius for i in range(2)]
             for b in self.bubbles:
                 if distance(b.center(), center) < b.radius + radius:
                     retry = True
                     break
+
+        # Move in a random direction
         theta = random.random()*2*math.pi
         direction = [math.cos(theta), math.sin(theta)]
+
+        # Choose the letter and case
         self.duration += 1
-        letter = self.alphabet[self.duration%len(self.alphabet)].upper()
-        if self.duration > 26:
+        letter = self.alphabet[self.duration%len(self.alphabet)]
+        if self.mode == Game.UPPERCASE_MODE:
+            letter = letter.upper()
+        elif self.mode == Game.MIXEDCASE_MODE:
             letter = random.choice([letter.upper(), letter.lower()])
+        else:
+            letter = letter.lower()
+
+        # Choose the font  
         font = random.choice(self.fonts)
+
         return Bubble(letter, font, self.bubble_radius, position, direction)
 
     def run(self):
@@ -244,14 +286,14 @@ class Game(object):
         while 1 < 2:
             event = pygame.event.wait()
 
-            # Android-specific:
+            # Android-specific: always be ready to sleep
             if android:
                 if android.check_pause():
                     android.wait_for_resume()
 
             # Refresh display
             if event.type == Game.REFRESH_EVENT:
-                # keep the music playing
+                # Android-specific: keep the soundtrack playing
                 if android:
                     android.mixer.periodic()
 
@@ -259,40 +301,57 @@ class Game(object):
                 self.physics()
                 pygame.display.flip()
 
-            # announcement is over---start playing and turn up the volume
+            # The announcement is over---start playing
             elif event.type == Game.ANNOUNCE_EVENT:
                 pygame.time.set_timer(Game.ANNOUNCE_EVENT, 0)
                 self.state = Game.PLAY_STATE
 
-            # congratulations is over---announce new target
+            # The congratulations is over---announce new target
             elif event.type == Game.BRAVO_EVENT:
                 pygame.time.set_timer(Game.BRAVO_EVENT, 0)
                 self.announce_target()
 
-            # the user clicked somewhere
+            # The user clicked somewhere
             elif event.type == pygame.MOUSEBUTTONDOWN \
                     and self.state != Game.BRAVO_STATE:
                 self.clicked(event.pos)
 
-            # User hit escape (or back); quit
+            # The user hit escape (or back); quit
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 break
+
+    def get_mode_rect(self):
+        """Get the rectangle that contains this game's mode indicator"""
+        rect = self.mode_imgs[self.mode].get_rect()
+        return rect.move (self.width-rect.width-self.pad, self.pad)
+
+    def get_bubbles_rect(self):
+        """Get the rectangle that contains the bubble count indicator"""
+        rect = self.bubble_imgs[len(self.bubbles)-1].get_rect()
+        return rect.move(self.pad, self.pad)
 
     def draw(self):
         """Draw this game's display"""
         
-        # first the background image
+        # First the background image
         self.screen.blit(self.bg_img, self.bg_img.get_rect())
-
-        # then all the bubbles
+    
+        # Then all the bubbles
         for b in self.bubbles:
             # draw this bubble
             rect = b.image.get_rect()
             rect = rect.move(int(b.position[0]), int(b.position[1]))
             self.screen.blit(b.image, rect)
             c = [int(x) for x in b.center()]
-        
-        # finally, the announcement
+
+        # Then the mode
+        self.screen.blit(self.mode_imgs[self.mode], self.get_mode_rect())
+
+        # Then the bubble count
+        self.screen.blit(self.bubble_imgs[len(self.bubbles)-1],
+                         self.get_bubbles_rect())
+
+        # Finally, draw the announcement
         if self.state == Game.ANNOUNCE_STATE:
             letter = self.bubbles[self.target].letter.upper()
             text = self.announce_font.render(letter, True, Game.WHITE)
@@ -361,9 +420,10 @@ class Game(object):
         """The user clicked at location pos, see if they hit the target"""
 
         b = self.bubbles[self.target]
+
+        # user clicked the target bubble
         if distance(pos, b.center()) < b.radius:
 
-            # user clicked the target bubble
             self.pop_sound.play()
             letter = b.letter
             bravo = self.load_sound("bravo-" + letter + ".wav")
@@ -382,7 +442,28 @@ class Game(object):
             else:
                 ms = int(bravo.get_length()*1000)
             pygame.time.set_timer(Game.BRAVO_EVENT, ms)
-        else:
+
+        # User clicked the mode indicator
+        elif self.get_mode_rect().collidepoint(pos):
+            self.mode = (self.mode + 1) % len(self.mode_imgs)
+
+        # User clicked the bubble count indicator
+        elif self.get_bubbles_rect().collidepoint(pos):
+            rect = self.get_bubbles_rect()
+            n = 1+int(((pos[0] - rect.left)/rect.width)*8)
+            n = min(n, 8)
+            n = max(n, 1)
+            print n
+            while len(self.bubbles) < n:
+                self.bubbles.append(self.make_bubble())
+            while len(self.bubbles) > n:
+                b2 = random.choice(self.bubbles)
+                if b2 != b:
+                    self.bubbles.remove(b2)
+                    self.target = self.bubbles.index(b)
+            
+        # User clicked somewhere else
+        else: 
             self.wrong_sound.play()
             if android:
                 android.vibrate(1)
