@@ -384,6 +384,8 @@ class Game(object):
             pygame.time.set_timer(Game.BRAVO_EVENT, ms)
         else:
             self.wrong_sound.play()
+            if android:
+                android.vibrate(1)
             for i in range(len(self.bubbles)):
                 b = self.bubbles[i]
                 if distance(pos, b.center()) < b.radius:
